@@ -1,4 +1,4 @@
-package test
+package persisted
 
 // These tests verify that LinkedList has the standard functionality expected of
 // a linked list.
@@ -6,8 +6,6 @@ package test
 import (
 	"strconv"
 	"testing"
-
-	"github.com/hwh33/persisted"
 )
 
 // This struct is just an integer which implements the Stringable interface.
@@ -34,7 +32,7 @@ func (i integer) FromString(s string) error {
 
 func TestAppend(t *testing.T) {
 	t.Parallel()
-	ll := new(persisted.LinkedList)
+	ll := new(LinkedList)
 	// Insert 10 elements with data equal to their position, then check the list's
 	// length and the value of each element.
 	for i := 0; i < 10; i++ {
