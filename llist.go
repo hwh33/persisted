@@ -62,7 +62,9 @@ func (ll *LinkedList) Pop() Stringable {
 	}
 	dataToReturn := ll.tail.data
 	ll.tail = ll.tail.previous
-	ll.tail.next = nil
+	if ll.tail != nil {
+		ll.tail.next = nil
+	}
 	ll.length--
 
 	return *dataToReturn
