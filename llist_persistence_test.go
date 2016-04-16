@@ -20,6 +20,7 @@ func decodeInt(stringForm string) (Stringable, error) {
 func TestPersistence(t *testing.T) {
 	t.Parallel()
 
+	// Create a temporary file to anchor the LinkedList to.
 	tempFile, err := ioutil.TempFile("", "temp-testing")
 	if err != nil {
 		t.Fatal(err)
@@ -39,6 +40,7 @@ func TestPersistence(t *testing.T) {
 		}
 	}
 
+	// Now create a new LinkedList from the existing one's file and compare.
 	llFromFile, err := NewLinkedList(tempFile.Name(), decodeInt)
 	if err != nil {
 		t.Fatal(err)
