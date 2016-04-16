@@ -53,13 +53,14 @@ func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error
 		if err != nil {
 			return nil, err
 		}
-		linkedList.Append(decodedStringable)
+		linkedList.appendWithoutWriting(decodedStringable)
 	}
 	return linkedList, nil
 }
 
-// Append adds the input element to the end of the list.
-func (ll *LinkedList) Append(newElement Stringable) {
+// A special function used while constructing a LinkedList from file. Used
+// to avoid writing to file the elements we are currently reading off.
+func (ll *LinkedList) appendWithoutWriting(newElement Stringable) {
 	newNode := new(node)
 	newNode.data = &newElement
 	if ll.tail == nil {
@@ -73,6 +74,19 @@ func (ll *LinkedList) Append(newElement Stringable) {
 		ll.tail = newNode
 		ll.length++
 	}
+}
+
+// Append adds the input element to the end of the list.
+func (ll *LinkedList) Append(newElement Stringable) error {
+	newElementString, err := newElement.ToString()
+	if err != nil {
+		return err
+	}
+	ll.appendWithoutWriting(newElement)
+	// Jump to the end of the backing file and append the new element.
+	ll.storage.Seek(0, 2)
+	_, err = ll.storage.WriteString(newElementString + "\n")
+	return err
 }
 
 // Push adds the input element to the beginning of the list.
