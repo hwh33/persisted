@@ -1,4 +1,4 @@
-// Package persisted provides data structures which persist to disk while in use.
+// Package persisted provides data structures which actively persist to disk.
 package persisted
 
 // Stringable types can marshal themselves into text, then later unmarshal
