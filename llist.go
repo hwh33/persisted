@@ -1,5 +1,10 @@
 package persisted
 
+import (
+	"bufio"
+	"os"
+)
+
 type node struct {
 	previous *node
 	next     *node
@@ -11,14 +16,47 @@ type node struct {
 // LinkedList by calling:
 //  new(LinkedList)
 type LinkedList struct {
-	head   *node
-	tail   *node
-	length int
+	head    *node
+	tail    *node
+	length  int
+	storage *os.File
 }
 
-// Implementation note: the LinkedList struct's zero values are perfectly
-// sufficient, so we do not provide a constructor. Rather, we instruct users to
-// simply use the built-in new function.
+// NewLinkedList returns a new LinkedList anchored to the file specified by
+// the input filepath. If this file exists and is not empty, it is assumed
+// that this file represents a persisted LinkedList and the data structure
+// will be re-constructed. If this file does not exist or is empty, a new,
+// empty LinkedList will be created. TODO: parent directories?
+func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error) {
+	linkedList := new(LinkedList)
+	if fileinfo, err := os.Stat(filepath); os.IsNotExist(err) || fileinfo.Size() == 0 {
+		// File does not exist or is empty, create a new one.
+		linkedList.storage, err = os.Create(filepath)
+		if err != nil {
+			return nil, err
+		}
+		return linkedList, nil
+	}
+
+	// If we are at this point, we are going to be reconstructing the
+	// LinkedList from file.
+	err := *new(error)
+	linkedList.storage, err = os.Open(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	scanner := bufio.NewScanner(linkedList.storage)
+	for scanner.Scan() {
+		// Attempt to decode the current line.
+		decodedStringable, err := decodeFn(scanner.Text())
+		if err != nil {
+			return nil, err
+		}
+		linkedList.Append(decodedStringable)
+	}
+	return linkedList, nil
+}
 
 // Append adds the input element to the end of the list.
 func (ll *LinkedList) Append(newElement Stringable) {

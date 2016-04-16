@@ -7,3 +7,7 @@ type Stringable interface {
 	ToString() (text string, err error)
 	FromString(text string) error
 }
+
+// DecodeFunction is a function which constructs a Stringable from its
+// string form.
+type DecodeFunction func(string) (Stringable, error)
