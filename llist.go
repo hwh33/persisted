@@ -8,7 +8,7 @@ type node struct {
 
 // LinkedList is a list of nodes with pointers to each other. Each node can hold
 // data, so long as that data implements the Stringable interface. Initialize a
-// LinkedList by calling
+// LinkedList by calling:
 //  new(LinkedList)
 type LinkedList struct {
 	head   *node
