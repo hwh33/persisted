@@ -73,3 +73,38 @@ func TestPushAndPop(t *testing.T) {
 		t.Error("List should be empty after Pop calls")
 	}
 }
+
+func TestIterator(t *testing.T) {
+	t.Parallel()
+	ll := new(LinkedList)
+	// Create a list with 10 elements, then create an iterator and test that the
+	// iterator returns the elements expected.
+	for i := 0; i < 10; i++ {
+		ll.Append(newInteger(i))
+	}
+	// Sanity check.
+	if ll.Length() != 10 {
+		t.Fatal("Expected list length to be 10")
+	}
+	iter := ll.Iterator()
+	for i := 0; i < 10; i++ {
+		element := iter().(*integer)
+		if element.wrappedInt != i {
+			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.wrappedInt))
+		}
+	}
+	// Confirm that the iterator returns nil when it has exhausted the list.
+	if iter() != nil {
+		t.Error("Iterator should have returned nil after exhausting list")
+	}
+	// Confirm that the list is untouched.
+	for i := 0; i < 10; i++ {
+		element := ll.Get(i).(*integer)
+		if element.wrappedInt != i {
+			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.wrappedInt))
+		}
+	}
+	if ll.Length() != 10 {
+		t.Error("Length should not have changed after Get calls")
+	}
+}

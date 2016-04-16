@@ -88,3 +88,20 @@ func (ll *LinkedList) Get(position int) Stringable {
 func (ll *LinkedList) Length() int {
 	return ll.length
 }
+
+// Iterator returns a function which, when called, returns the next element in
+// the list. The iterator function begins at the first element and returns nil
+// when it has run out of elements. Uses the underlying structure, so behavior
+// is undefined if the list is modified between calls to the iterator function.
+func (ll *LinkedList) Iterator() func() Stringable {
+	currNode := ll.head
+
+	return func() Stringable {
+		if currNode == nil {
+			return nil
+		}
+		dataToReturn := currNode.data
+		currNode = currNode.next
+		return *dataToReturn
+	}
+}
