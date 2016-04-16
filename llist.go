@@ -73,7 +73,7 @@ func (ll *LinkedList) Pop() Stringable {
 // Get returns the element at the input position without removing it from the
 // list. Returns nil if there is no element at the given position.
 func (ll *LinkedList) Get(position int) Stringable {
-	if ll.length-1 < position {
+	if position < 0 || ll.length-1 < position {
 		// Out of bounds.
 		return nil
 	}

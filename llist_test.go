@@ -50,6 +50,10 @@ func TestAppendAndGet(t *testing.T) {
 	if ll.Length() != 10 {
 		t.Error("Length should not have changed after Get calls")
 	}
+	// Confirm that calling Get on an invalid index returns nil.
+	if ll.Get(100) != nil || ll.Get(-1) != nil {
+		t.Error("Get should return nil for invalid index")
+	}
 }
 
 func TestPushAndPop(t *testing.T) {
@@ -71,6 +75,10 @@ func TestPushAndPop(t *testing.T) {
 	}
 	if ll.Length() != 0 {
 		t.Error("List should be empty after Pop calls")
+	}
+	// Confirm that calling Pop on an empty list returns nil.
+	if ll.Pop() != nil {
+		t.Error("Calling Pop on an empty list should return nil")
 	}
 }
 
