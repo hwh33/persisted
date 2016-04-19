@@ -18,6 +18,8 @@ func decodeInt(stringForm string) (Stringable, error) {
 	return newInteger(i), nil
 }
 
+// Make a LinkedList anchored to a file. Then try to load a new LinkedList from
+// this file and compare the data in each. They should be the same.
 func TestPersistence(t *testing.T) {
 	t.Parallel()
 
