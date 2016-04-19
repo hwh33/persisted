@@ -30,7 +30,7 @@ type LinkedList struct {
 func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error) {
 	linkedList := new(LinkedList)
 	if fileinfo, err := os.Stat(filepath); os.IsNotExist(err) || fileinfo.Size() == 0 {
-		// File does not exist or is empty, create a new one.
+		// File does not exist or is empty; create a new one.
 		linkedList.storage, err = os.Create(filepath)
 		if err != nil {
 			return nil, err
@@ -78,14 +78,11 @@ func (ll *LinkedList) appendWithoutWriting(newElement Stringable) {
 
 // Append adds the input element to the end of the list.
 func (ll *LinkedList) Append(newElement Stringable) error {
-	newElementString, err := newElement.ToString()
-	if err != nil {
-		return err
-	}
+	newElementString := newElement.ToString()
 	ll.appendWithoutWriting(newElement)
 	// Jump to the end of the backing file and append the new element.
 	ll.storage.Seek(0, 2)
-	_, err = ll.storage.WriteString(newElementString + "\n")
+	_, err := ll.storage.WriteString(newElementString + "\n")
 	return err
 }
 

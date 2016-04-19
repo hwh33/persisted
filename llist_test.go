@@ -19,9 +19,8 @@ func newInteger(i int) *integer {
 	return newInteger
 }
 
-func (i *integer) ToString() (string, error) {
-	s := strconv.Itoa(i.wrappedInt)
-	return s, nil
+func (i *integer) ToString() string {
+	return strconv.Itoa(i.wrappedInt)
 }
 
 func (i *integer) FromString(s string) error {
