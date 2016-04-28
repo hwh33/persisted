@@ -2,140 +2,121 @@ package persisted
 
 import (
 	"bufio"
+	"errors"
 	"os"
 )
 
-type node struct {
-	previous *node
-	next     *node
-	data     *Stringable
-}
+const (
+	append = "__append__"
+	push   = "__push__"
+	pop    = "__pop__"
+)
+
+const noSubject = "__no_subject__"
 
 // LinkedList is a list of nodes with pointers to each other. Each node can hold
 // data, so long as that data implements the Stringable interface. Initialize a
-// LinkedList by calling:
-//  new(LinkedList)
+// LinkedList by calling NewLinkedList.
 type LinkedList struct {
-	head    *node
-	tail    *node
-	length  int
-	storage *os.File
+	inner *inMemLinkedList
+	log   *os.File
 }
 
 // NewLinkedList returns a new LinkedList anchored to the file specified by
-// the input filepath. If this file exists and is not empty, it is assumed
-// that this file represents a persisted LinkedList and the data structure
-// will be re-constructed. If this file does not exist or is empty, a new,
-// empty LinkedList will be created. TODO: parent directories?
+// the input filepath.
+//
+// If this file exists and is not empty, it is assumed that the file represents
+// a persisted LinkedList and the data structure will be re-constructed. If this
+// file does not exist or is empty, a new, empty LinkedList will be created. In
+// this case, a new file may be created by this constructor, but all parent
+// directories must already exist.
+//
+// The input DecodeFunction tells the LinkedList how to read the Stringable
+// types back from their marshalled form. It should be able to handle any
+// Stringables handled by this LinkedList or already encoded in the input file.
 func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error) {
 	linkedList := new(LinkedList)
-	if fileinfo, err := os.Stat(filepath); os.IsNotExist(err) || fileinfo.Size() == 0 {
-		// File does not exist or is empty; create a new one.
-		linkedList.storage, err = os.Create(filepath)
-		if err != nil {
-			return nil, err
-		}
-		return linkedList, nil
-	}
 
-	// If we are at this point, we are going to be reconstructing the
-	// LinkedList from file.
-	err := *new(error)
-	linkedList.storage, err = os.Open(filepath)
+	// Rebuild the in-memory list from the input log.
+	inputLog, err := os.Open(filepath)
 	if err != nil {
 		return nil, err
 	}
 
-	scanner := bufio.NewScanner(linkedList.storage)
+	linkedList.inner = new(inMemLinkedList)
+	scanner := bufio.NewScanner(inputLog)
+	var decoded Stringable
 	for scanner.Scan() {
-		// Attempt to decode the current line.
-		decodedStringable, err := decodeFn(scanner.Text())
+		action := scanner.Text()
 		if err != nil {
-			return nil, err
+			return nil, errors.New("Failed to read input linked list file: " + err.Error())
 		}
-		linkedList.appendWithoutWriting(decodedStringable)
-	}
-	return linkedList, nil
-}
+		decoded, err = decodeFn(scanner.Text())
+		if action != pop && err != nil {
+			return nil, errors.New("Failed to decode encoded stringable in input file: " + err.Error())
+		}
 
-// A special function used while constructing a LinkedList from file. Used
-// to avoid writing to file the elements we are currently reading off.
-func (ll *LinkedList) appendWithoutWriting(newElement Stringable) {
-	newNode := new(node)
-	newNode.data = &newElement
-	if ll.tail == nil {
-		// This is the first element.
-		ll.head = newNode
-		ll.tail = newNode
-		ll.length = 1
-	} else {
-		ll.tail.next = newNode
-		newNode.previous = ll.tail
-		ll.tail = newNode
-		ll.length++
+		if action == append {
+			linkedList.inner.append(decoded)
+		} else if action == push {
+			linkedList.inner.push(decoded)
+		} else if action == pop {
+			linkedList.inner.pop()
+		} else {
+			return nil, errors.New("Input file appears to be corrupted")
+		}
 	}
+
+	// Now wipe the log and re-write only the current state of the list.
+	// TODO: it would be safer to write this to a temporary file first
+	err = inputLog.Close()
+	if err != nil {
+		return nil, err
+	}
+	linkedList.log, err = os.Create(filepath)
+	if err != nil {
+		return nil, err
+	}
+
+	iterator := linkedList.Iterator()
+	for element := iterator(); element != nil; element = iterator() {
+		linkedList.logAction(append, element)
+	}
+
+	return linkedList, nil
 }
 
 // Append adds the input element to the end of the list.
 func (ll *LinkedList) Append(newElement Stringable) error {
-	newElementString := newElement.ToString()
-	ll.appendWithoutWriting(newElement)
-	// Jump to the end of the backing file and append the new element.
-	ll.storage.Seek(0, 2)
-	_, err := ll.storage.WriteString(newElementString + "\n")
-	return err
+	ll.inner.append(newElement)
+	return ll.logAction(append, newElement)
 }
 
 // Push adds the input element to the beginning of the list.
-func (ll *LinkedList) Push(newElement Stringable) {
-	newNode := new(node)
-	newNode.data = &newElement
-	if ll.head == nil {
-		// This is the first element.
-		ll.head = newNode
-		ll.tail = newNode
-		ll.length = 1
-	} else {
-		ll.head.previous = newNode
-		newNode.next = ll.head
-		ll.head = newNode
-		ll.length++
-	}
+func (ll *LinkedList) Push(newElement Stringable) error {
+	ll.inner.push(newElement)
+	return ll.logAction(push, newElement)
 }
 
 // Pop removes and returns the last element of the list. Returns nil if the list
 // is empty.
-func (ll *LinkedList) Pop() Stringable {
-	if ll.length == 0 {
-		return nil
+func (ll *LinkedList) Pop() (Stringable, error) {
+	popped := ll.inner.pop()
+	if popped == nil {
+		return nil, nil
 	}
-	dataToReturn := ll.tail.data
-	ll.tail = ll.tail.previous
-	if ll.tail != nil {
-		ll.tail.next = nil
-	}
-	ll.length--
-
-	return *dataToReturn
+	return popped, ll.logSimpleAction(pop)
 }
 
 // Get returns the element at the input position without removing it from the
 // list. Returns nil if there is no element at the given position.
 func (ll *LinkedList) Get(position int) Stringable {
-	if position < 0 || ll.length-1 < position {
-		// Out of bounds.
-		return nil
-	}
-	currNode := ll.head
-	for currPosition := 0; currPosition < position; currPosition++ {
-		currNode = currNode.next
-	}
-	return *currNode.data
+	return ll.inner.get(position)
 }
 
 // Length returns the number of elements in the list.
 func (ll *LinkedList) Length() int {
-	return ll.length
+	return ll.inner.length
 }
 
 // Iterator returns a function which, when called, returns the next element in
@@ -143,14 +124,17 @@ func (ll *LinkedList) Length() int {
 // when it has run out of elements. Uses the underlying structure, so behavior
 // is undefined if the list is modified between calls to the iterator function.
 func (ll *LinkedList) Iterator() func() Stringable {
-	currNode := ll.head
+	return ll.inner.iterator()
+}
 
-	return func() Stringable {
-		if currNode == nil {
-			return nil
-		}
-		dataToReturn := currNode.data
-		currNode = currNode.next
-		return *dataToReturn
-	}
+func (ll *LinkedList) logSimpleAction(action string) error {
+	ll.log.Seek(0, os.SEEK_END)
+	_, err := ll.log.WriteString(action + "\n" + noSubject + "\n")
+	return err
+}
+
+func (ll *LinkedList) logAction(action string, subject Stringable) error {
+	ll.log.Seek(0, os.SEEK_END)
+	_, err := ll.log.WriteString(action + "\n" + subject.ToString() + "\n")
+	return err
 }

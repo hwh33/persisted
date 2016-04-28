@@ -4,6 +4,8 @@ package persisted
 // a linked list.
 
 import (
+	"io/ioutil"
+	"os"
 	"strconv"
 	"testing"
 )
@@ -29,13 +31,31 @@ func (i *integer) FromString(s string) error {
 	return err
 }
 
+// DecodeFunction for the integer type.
+func decodeInt(stringForm string) (Stringable, error) {
+	i, err := strconv.Atoi(stringForm)
+	if err != nil {
+		return nil, err
+	}
+	return newInteger(i), nil
+}
+
 func TestAppendAndGet(t *testing.T) {
 	t.Parallel()
-	ll := new(LinkedList)
+
+	ll, wipeTempFiles, err := createTemporaryLinkedList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wipeTempFiles()
+
 	// Insert 10 elements with data equal to their position, then check the list's
 	// length and the value of each element.
 	for i := 0; i < 10; i++ {
-		ll.Append(newInteger(i))
+		err := ll.Append(newInteger(i))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if ll.Length() != 10 {
 		t.Error("Inserted 10 elements, length was not 10")
@@ -57,37 +77,66 @@ func TestAppendAndGet(t *testing.T) {
 
 func TestPushAndPop(t *testing.T) {
 	t.Parallel()
-	ll := new(LinkedList)
+
+	ll, wipeTempFiles, err := createTemporaryLinkedList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wipeTempFiles()
+
 	// Push 10 elements. The data stored in each element reflects the order in
 	// which it was added.
 	for i := 0; i < 10; i++ {
-		ll.Push(newInteger(i))
+		err = ll.Push(newInteger(i))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	if ll.Length() != 10 {
 		t.Error("Inserted 10 elements, length was not 10")
 	}
-	for i := 0; i < 10; i++ {
-		element := ll.Pop().(*integer)
-		if element.wrappedInt != i {
-			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.wrappedInt))
+
+	var element Stringable
+	for i := 0; i < ll.Length(); i++ {
+		element, err = ll.Pop()
+		if err != nil {
+			t.Fatal(err)
+		}
+		elementAsInteger := element.(*integer)
+		if elementAsInteger.wrappedInt != i {
+			t.Error("Expected: " + strconv.Itoa(i) + ", got: " +
+				strconv.Itoa(elementAsInteger.wrappedInt))
 		}
 	}
 	if ll.Length() != 0 {
 		t.Error("List should be empty after Pop calls")
 	}
 	// Confirm that calling Pop on an empty list returns nil.
-	if ll.Pop() != nil {
+	popped, err := ll.Pop()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if popped != nil {
 		t.Error("Calling Pop on an empty list should return nil")
 	}
 }
 
 func TestIterator(t *testing.T) {
 	t.Parallel()
-	ll := new(LinkedList)
+
+	ll, wipeTempFiles, err := createTemporaryLinkedList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wipeTempFiles()
+
 	// Create a list with 10 elements, then create an iterator and test that the
 	// iterator returns the elements expected.
 	for i := 0; i < 10; i++ {
-		ll.Append(newInteger(i))
+		err := ll.Append(newInteger(i))
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Sanity check.
 	if ll.Length() != 10 {
@@ -114,4 +163,28 @@ func TestIterator(t *testing.T) {
 	if ll.Length() != 10 {
 		t.Error("Length should not have changed after Get calls")
 	}
+}
+
+func createTemporaryLinkedList() (linkedList *LinkedList, wipeTempFiles func() error, err error) {
+	// Create a temporary file to anchor the LinkedList to.
+	tempFile, err := ioutil.TempFile("", "temp-testing")
+	if err != nil {
+		return
+	}
+	os.Chmod(tempFile.Name(), 0666)
+
+	wipeTempFiles = func() error {
+		err := tempFile.Close()
+		if err != nil {
+			return err
+		}
+		err = os.Remove(tempFile.Name())
+		if err != nil {
+			return err
+		}
+		return nil
+	}
+
+	linkedList, err = NewLinkedList(tempFile.Name(), decodeInt)
+	return
 }
