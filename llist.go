@@ -6,6 +6,7 @@ import (
 	"os"
 )
 
+// Actions we record in the log file.
 const (
 	append = "__append__"
 	push   = "__push__"
@@ -22,7 +23,7 @@ func (ns *noSubject) ToString() string {
 
 // TODO: either handle newlines / carriage returns or disallow them
 
-// LinkedList is a list of nodes with pointers to each other. Each node can hold
+// LinkedList is a persisted, doubly-linked list of nodes. Each node can hold
 // data, so long as that data implements the Stringable interface. Initialize a
 // LinkedList by calling NewLinkedList.
 type LinkedList struct {
@@ -41,7 +42,7 @@ type LinkedList struct {
 //
 // The input DecodeFunction tells the LinkedList how to read the Stringable
 // types back from their marshalled form. It should be able to handle any
-// Stringables handled by this LinkedList or already encoded in the input file.
+// Stringables already encoded in the input file.
 func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error) {
 	linkedList := new(LinkedList)
 

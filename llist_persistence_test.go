@@ -121,7 +121,6 @@ func TestNonWritableFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer wipeTempFiles()
-
 	ll.Append(newInteger(1))
 
 	// Now make the log file read-only and try to re-create a LinkedList from it.
@@ -185,7 +184,8 @@ func TestBadInputFile(t *testing.T) {
 }
 
 // Helper function. Assumes that all elements of llist are of type integer (see
-// llist_test.go). Returns the integer form of all elements in-order as a slice.
+// llist_standard_test.go). Returns the integer form of all elements in-order as
+// a slice.
 func getIntegerSlice(llist *LinkedList) []int {
 	ints := make([]int, llist.Length())
 	for currentIndex := 0; currentIndex < llist.Length(); currentIndex++ {
