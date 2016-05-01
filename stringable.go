@@ -1,11 +1,10 @@
 // Package persisted provides data structures which actively persist to disk.
 package persisted
 
-// Stringable types can marshal themselves into text, then later unmarshal
-// themselves from that text.
+// Stringable types can marshal themselves into text. They are unmarshalled by
+// a DecodeFunction.
 type Stringable interface {
 	ToString() string
-	FromString(text string) error
 }
 
 // DecodeFunction is a function which constructs a Stringable from its

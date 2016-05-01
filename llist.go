@@ -12,7 +12,13 @@ const (
 	pop    = "__pop__"
 )
 
-const noSubject = "__no_subject__"
+// We use the noSubject type when we have actions we want to log which do not
+// have subjects (such as Pop).
+type noSubject struct{}
+
+func (ns *noSubject) ToString() string {
+	return "__no_subject__"
+}
 
 // TODO: either handle newlines / carriage returns or disallow them
 
@@ -104,7 +110,7 @@ func (ll *LinkedList) Pop() (Stringable, error) {
 	if popped == nil {
 		return nil, nil
 	}
-	return popped, ll.logSimpleAction(pop)
+	return popped, ll.logAction(pop, new(noSubject))
 }
 
 // Get returns the element at the input position without removing it from the
@@ -124,12 +130,6 @@ func (ll *LinkedList) Length() int {
 // is undefined if the list is modified between calls to the iterator function.
 func (ll *LinkedList) Iterator() func() Stringable {
 	return ll.inner.iterator()
-}
-
-func (ll *LinkedList) logSimpleAction(action string) error {
-	ll.log.Seek(0, os.SEEK_END)
-	_, err := ll.log.WriteString(action + "\n" + noSubject + "\n")
-	return err
 }
 
 func (ll *LinkedList) logAction(action string, subject Stringable) error {
