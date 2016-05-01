@@ -112,8 +112,32 @@ func TestNonReadableFile(t *testing.T) {
 	}
 }
 
-// Give the LinkedList constructor a file with lines which cannot be parsed by
-// the input DecodeFunction. This should fail.
+func TestNonWritableFile(t *testing.T) {
+	t.Parallel()
+
+	// Create a LinkedList with some data in it.
+	ll, wipeTempFiles, err := createTemporaryLinkedList()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer wipeTempFiles()
+
+	ll.Append(newInteger(1))
+
+	// Now make the log file read-only and try to re-create a LinkedList from it.
+	os.Chmod(ll.log.Name(), 0444)
+	_, err = NewLinkedList(ll.log.Name(), decodeInt)
+	if err == nil {
+		t.Error("Constructor should have reported error for non-writable file")
+	}
+}
+
+// func TestNonClosableFile(t *testing.T) {
+// 	t.Parallel()
+// }
+
+// Give the LinkedList constructor a file which does not match the expected
+// format.
 func TestBadInputFile(t *testing.T) {
 	t.Parallel()
 
@@ -124,10 +148,40 @@ func TestBadInputFile(t *testing.T) {
 	defer tempFile.Close()
 	defer os.Remove(tempFile.Name())
 
-	// We need to write some data to the file so that the constructor tries to
-	// read it.
-	tempFile.WriteString("bogus string")
+	// Write an append with no subject.
+	_, err = tempFile.WriteString(append)
+	if err != nil {
+		t.Fatal(err)
+	}
 
+	_, err = NewLinkedList(tempFile.Name(), decodeInt)
+	if err == nil {
+		t.Error("Constructor should have reported error for badly-formatted file")
+	}
+
+	// Now add a subject that the decode function can't parse and try again.
+	_, err = tempFile.WriteString("\nbogus string")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = NewLinkedList(tempFile.Name(), decodeInt)
+	if err == nil {
+		t.Error("Constructor should have reported error for badly-formatted file")
+	}
+
+	// Now give the constructor a decodable subject, but a badly formatted action.
+	err = tempFile.Truncate(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tempFile.WriteString("bad action\n")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = tempFile.WriteString(newInteger(1).ToString() + "\n")
+	if err != nil {
+		t.Fatal(err)
+	}
 	_, err = NewLinkedList(tempFile.Name(), decodeInt)
 	if err == nil {
 		t.Error("Constructor should have reported error for badly-formatted file")

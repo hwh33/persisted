@@ -72,10 +72,6 @@ func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error
 
 	// Now wipe the log and re-write only the current state of the list.
 	// TODO: it would be safer to write this to a temporary file first
-	err = inputLog.Close()
-	if err != nil {
-		return nil, err
-	}
 	linkedList.log, err = os.Create(filepath)
 	if err != nil {
 		return nil, err
