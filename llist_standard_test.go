@@ -85,7 +85,7 @@ func TestPushAndPop(t *testing.T) {
 	defer wipeTempFiles()
 
 	// Push 10 elements. The data stored in each element reflects the order in
-	// which it was added.
+	// which it was pushed. This should result in a list from 9 to 0.
 	for i := 0; i < 10; i++ {
 		err = ll.Push(newInteger(i))
 		if err != nil {
@@ -97,7 +97,8 @@ func TestPushAndPop(t *testing.T) {
 	}
 
 	var element Stringable
-	for i := 0; i < ll.Length(); i++ {
+	numberElements := ll.Length()
+	for i := 0; i < numberElements; i++ {
 		element, err = ll.Pop()
 		if err != nil {
 			t.Fatal(err)
@@ -171,7 +172,6 @@ func createTemporaryLinkedList() (linkedList *LinkedList, wipeTempFiles func() e
 	if err != nil {
 		return
 	}
-	os.Chmod(tempFile.Name(), 0666)
 
 	wipeTempFiles = func() error {
 		err := tempFile.Close()
