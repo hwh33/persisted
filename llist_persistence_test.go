@@ -132,10 +132,6 @@ func TestNonWritableFile(t *testing.T) {
 	}
 }
 
-// func TestNonClosableFile(t *testing.T) {
-// 	t.Parallel()
-// }
-
 // Give the LinkedList constructor a file which does not match the expected
 // format.
 func TestBadInputFile(t *testing.T) {
