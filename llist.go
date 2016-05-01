@@ -53,6 +53,10 @@ func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error
 		if err != nil {
 			return nil, errors.New("Failed to read input linked list file: " + err.Error())
 		}
+		foundStringable := scanner.Scan()
+		if !foundStringable {
+			return nil, errors.New("Failed to read input linked list file: unexpected end of file")
+		}
 		decoded, err = decodeFn(scanner.Text())
 		if action != pop && err != nil {
 			return nil, errors.New("Failed to decode encoded stringable in input file: " + err.Error())
