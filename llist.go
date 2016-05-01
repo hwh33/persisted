@@ -14,6 +14,8 @@ const (
 
 const noSubject = "__no_subject__"
 
+// TODO: either handle newlines / carriage returns or disallow them
+
 // LinkedList is a list of nodes with pointers to each other. Each node can hold
 // data, so long as that data implements the Stringable interface. Initialize a
 // LinkedList by calling NewLinkedList.
