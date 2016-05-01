@@ -26,19 +26,51 @@ func TestPersistence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	// We'll do a few pushes and pops as well.
+	for i := 10; i < 20; i += 2 {
+		// 2 pushes + 1 pop each loop.
+		err = ll.Push(newInteger(i))
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = ll.Push(newInteger(i + 1))
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = ll.Pop()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 
 	// Now create a new LinkedList from the existing one's file and compare.
-	llFromFile, err := NewLinkedList(ll.log.Name(), decodeInt)
+	llJr, err := NewLinkedList(ll.log.Name(), decodeInt)
 	if err != nil {
 		t.Fatal(err)
 	}
 	llInts := getIntegerSlice(ll)
-	llFromFileInts := getIntegerSlice(llFromFile)
-	if len(llInts) != len(llFromFileInts) {
+	llJrInts := getIntegerSlice(llJr)
+	if len(llInts) != len(llJrInts) {
 		t.Fatal("LinkedList loaded from file does not have expected number of elements")
 	}
 	for i := range llInts {
-		if llInts[i] != llFromFileInts[i] {
+		if llInts[i] != llJrInts[i] {
+			t.Error("LinkedList loaded from file does not match expected structure")
+		}
+	}
+
+	// Create another LinkedList off the new one and compare again to make sure
+	// there were no errors in re-writing the log.
+	llTheThird, err := NewLinkedList(llJr.log.Name(), decodeInt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	llTheThirdInts := getIntegerSlice(llTheThird)
+	if len(llTheThirdInts) != len(llJrInts) {
+		t.Fatal("LinkedList loaded from file does not have expected number of elements")
+	}
+	for i := range llTheThirdInts {
+		if llTheThirdInts[i] != llJrInts[i] {
 			t.Error("LinkedList loaded from file does not match expected structure")
 		}
 	}
