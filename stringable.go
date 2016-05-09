@@ -3,6 +3,7 @@ package persisted
 
 // Stringable types can marshal themselves into text. They are unmarshalled by
 // a DecodeFunction.
+// TODO: get rid of this and just use JSON marshallers
 type Stringable interface {
 	ToString() string
 }
