@@ -86,8 +86,7 @@ func (l *log) setCompactionThreshold(compactionThreshold int64) error {
 // Runs through the log and applies every recorded action to toBuild. Compaction
 // will be run before this method returns as initialization is a good time for
 // cleanup.
-func (l *log) buildFromLog(toBuild interface{}, unmarshalFn func([]byte, interface{}) error,
-	newElementFn func() interface{}) error {
+func (l *log) buildFromLog(toBuild interface{}) error {
 	// Compact first to save ourselves some time once we start rebuilding.
 	err := l.compact()
 	if err != nil {
