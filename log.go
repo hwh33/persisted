@@ -30,12 +30,12 @@ import (
 // {"action":actionKey, "subject":subject.ToString(), "metadata":metadataJSON}
 // where metadataJSON is the JSON encoding of the metadata interface{}.
 
-// Initialize the compaction threshold to 10 MB.
-const initialCompactionThreshold = 10 * 1024 * 1024
+// Initialize the compaction threshold to 10 KB.
+const initialCompactionThreshold = 10 * 1024
 
 type log struct {
 	file             *os.File
-	getIter          func() func() Stringable
+	getIter          func() func() json.Marshaler
 	actionFunctions  map[string]actionFunction
 	defaultActionKey string
 	compactThreshold int64
@@ -45,39 +45,35 @@ type log struct {
 // metadata. In 'list.append(newElement)', list is the object and newElement is
 // the subject. The metadata is nil. In 'list.remove(2)', list is the object and
 // 2 is the metadata. The subject is nil.
-type actionFunction func(object interface{}, subject Stringable, metadata interface{})
+type actionFunction func(
+	object interface{}, parameters ...interface{})
 
 // Used for JSON encoding / decoding of actions.
 type action struct {
-	key            string
-	encodedSubject string
-	metadata       interface{}
+	key        string
+	parameters []json.Marshaler
 }
 
 // If the file at filepath does not exist or is empty, a brand new log is made.
 // This will create a new file, but the parent directory must exist. If the file
 // is not empty, it will be interpreted as an existing log.
-func newLog(filepath string, iterFunction func() func() Stringable,
+func newLog(filepath string, iterFunction func() func() json.Marshaler,
 	actions map[string]actionFunction, defaultActionKey string) (*log, error) {
 
 	// TODO: check input file
 
-	var err error
-	newLog := new(log)
-	newLog.file, err = os.Open(filepath)
+	logFile, err := os.Open(filepath)
 	if err != nil {
 		return nil, err
 	}
-	newLog.getIter = iterFunction
-	newLog.actionFunctions = actions
-	newLog.defaultActionKey = defaultActionKey
-	newLog.compactThreshold = initialCompactionThreshold
-
-	return newLog, nil
+	return &log{
+		logFile, iterFunction, actions, defaultActionKey, initialCompactionThreshold,
+	}, nil
 }
 
-func (l *log) addAction(actionKey string, subject Stringable, metadata interface{}) error {
-	err := writeAction(actionKey, subject, metadata, l.file)
+// Records the action in the log.
+func (l *log) addAction(actionKey string, parameters ...json.Marshaler) error {
+	err := writeAction(l.file, actionKey, parameters...)
 	l.compactIfNecessary()
 	return err
 }
@@ -87,12 +83,18 @@ func (l *log) setCompactionThreshold(compactionThreshold int64) error {
 	return l.compactIfNecessary()
 }
 
-// Builds the interface up from the log by calling the action functions defined
-// in newLog. Compaction will be run before this method returns as
-// initialization is a good time for cleanup.
-func (l *log) buildFromLog(toBuild interface{}, decodeFn DecodeFunction) error {
+// Runs through the log and applies every recorded action to toBuild. Compaction
+// will be run before this method returns as initialization is a good time for
+// cleanup.
+func (l *log) buildFromLog(toBuild interface{}, unmarshalFn func([]byte, interface{}) error,
+	newElementFn func() interface{}) error {
+	// Compact first to save ourselves some time once we start rebuilding.
+	err := l.compact()
+	if err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(l.file)
-	_, err := decoder.Token()
+	_, err = decoder.Token()
 	if err != nil {
 		return err
 	}
@@ -103,12 +105,8 @@ func (l *log) buildFromLog(toBuild interface{}, decodeFn DecodeFunction) error {
 		if err != nil {
 			return err
 		}
-		decodedSubject, err := decodeFn(decodedAction.encodedSubject)
-		if err != nil {
-			return err
-		}
 		actionFn := l.actionFunctions[decodedAction.key]
-		actionFn(toBuild, decodedSubject, decodedAction.metadata)
+		actionFn(toBuild, decodedAction.parameters)
 	}
 	return nil
 }
@@ -121,7 +119,7 @@ func (l *log) compact() error {
 	}
 	iter := l.getIter()
 	for current := iter(); current != nil; current = iter() {
-		err = writeAction(l.defaultActionKey, current, nil, tempFile)
+		err = writeAction(tempFile, l.defaultActionKey, current)
 		if err != nil {
 			return err
 		}
@@ -152,11 +150,6 @@ func (l *log) compactIfNecessary() error {
 	return nil
 }
 
-// Writes an action to the log file as a JSON object.
-func writeAction(actionKey string, subject Stringable, metadata interface{}, file *os.File) error {
-	actionToWrite := new(action)
-	actionToWrite.key = actionKey
-	actionToWrite.encodedSubject = subject.ToString()
-	actionToWrite.metadata = metadata
-	return json.NewEncoder(file).Encode(actionToWrite)
+func writeAction(file *os.File, actionKey string, parameters ...json.Marshaler) error {
+	return json.NewEncoder(file).Encode(action{actionKey, parameters})
 }
