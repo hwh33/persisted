@@ -2,6 +2,7 @@ package persisted
 
 import (
 	"encoding/json"
+	"errors"
 	"io/ioutil"
 	"os"
 )
@@ -25,20 +26,35 @@ import (
 // function. If the order in which the default action is applied matters, then
 // the iterator must return the elements of the data structure in order.
 //
+// The Default Action:
+// To resolve compaction with the iterator function, the default action must
+// take only one parameter and this must be the parameter returned by the
+// iterator.
+//
 // Encoding:
-// Actions are recorded in the log file as JSON objects of the form:
-// {"action":actionKey, "subject":subject.ToString(), "metadata":metadataJSON}
-// where metadataJSON is the JSON encoding of the metadata interface{}.
+// Actions are recorded in the log file as JSON objects. The parameters to an
+// action (passed in to the addAction method) will be encoded as JSON objects as
+// well. By default, this is done with the json.Marshal function. The parameters
+// are then read back out of the log using the json.Unmarshal function. This
+// could result in undesired behavior like unexported fields of structs being
+// set to their zero values. For a full description of the behavior of the json
+// marshalling functions, see the godoc at golang.org/pkg/encoding/json. If you
+// need to avoid this behavior, you can pass in custom marshalling functions
+// using openCustomLog. The only requirements (besides the function signatures)
+// are that the marshal function create a valid JSON object and the unmarshal
+// function be able to read the produced JSON.
 
 // Initialize the compaction threshold to 10 KB.
 const initialCompactionThreshold = 10 * 1024
 
 type log struct {
 	file             *os.File
-	getIter          func() func() json.Marshaler
+	getIter          func() func() interface{}
 	actionFunctions  map[string]actionFunction
 	defaultActionKey string
 	compactThreshold int64
+	marshalFn        func(interface{}) ([]byte, error)
+	unmarshalFn      func([]byte, interface{}) error
 }
 
 // A function which applies the action to the object with the given subject and
@@ -50,15 +66,23 @@ type actionFunction func(
 
 // Used for JSON encoding / decoding of actions.
 type action struct {
-	key        string
-	parameters []json.Marshaler
+	key                  string
+	marshalledParameters [][]byte
 }
 
 // If the file at filepath does not exist or is empty, a brand new log is made.
 // This will create a new file, but the parent directory must exist. If the file
 // is not empty, it will be interpreted as an existing log.
-func newLog(filepath string, iterFunction func() func() json.Marshaler,
+func openLog(filepath string, iterFunction func() func() interface{},
 	actions map[string]actionFunction, defaultActionKey string) (*log, error) {
+	return openCustomLog(
+		filepath, iterFunction, actions, defaultActionKey, json.Marshal, json.Unmarshal)
+}
+
+func openCustomLog(filepath string, iterFunction func() func() interface{},
+	actions map[string]actionFunction, defaultActionKey string,
+	marshalFn func(interface{}) ([]byte, error),
+	unmarshalFn func([]byte, interface{}) error) (*log, error) {
 
 	// TODO: check input file
 
@@ -66,16 +90,42 @@ func newLog(filepath string, iterFunction func() func() json.Marshaler,
 	if err != nil {
 		return nil, err
 	}
-	return &log{
-		logFile, iterFunction, actions, defaultActionKey, initialCompactionThreshold,
-	}, nil
+	openedLog := &log{
+		logFile,
+		iterFunction,
+		actions,
+		defaultActionKey,
+		initialCompactionThreshold,
+		marshalFn,
+		unmarshalFn,
+	}
+	err = openedLog.compact()
+	if err != nil {
+		return nil, err
+	}
+	fileInfo, err := openedLog.file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	openedLog.setCompactionThreshold(fileInfo.Size() * 2)
+	return openedLog, nil
 }
 
 // Records the action in the log.
-func (l *log) addAction(actionKey string, parameters ...json.Marshaler) error {
-	err := writeAction(l.file, actionKey, parameters...)
-	l.compactIfNecessary()
-	return err
+func (l *log) addAction(actionKey string, parameters ...interface{}) error {
+	var err error
+	marshalledParameters := make([][]byte, len(parameters))
+	for index, parameter := range parameters {
+		marshalledParameters[index], err = l.marshalFn(parameter)
+		if err != nil {
+			return errors.New("Error marshalling action parameter: " + err.Error())
+		}
+	}
+	err = writeAction(l.file, actionKey, marshalledParameters...)
+	if err != nil {
+		return err
+	}
+	return l.compactIfNecessary()
 }
 
 func (l *log) setCompactionThreshold(compactionThreshold int64) error {
@@ -100,12 +150,16 @@ func (l *log) buildFromLog(toBuild interface{}) error {
 
 	for decoder.More() {
 		decodedAction := new(action)
-		err = decoder.Decode(decodedAction)
-		if err != nil {
-			return err
+		// TODO: make sure this works with custom marshal functions
+		parameters := make([]interface{}, len(decodedAction.marshalledParameters))
+		for index, marshalled := range decodedAction.marshalledParameters {
+			err = l.unmarshalFn(marshalled, parameters[index])
+			if err != nil {
+				return errors.New("Error unmarshalling element: " + err.Error())
+			}
 		}
 		actionFn := l.actionFunctions[decodedAction.key]
-		actionFn(toBuild, decodedAction.parameters)
+		actionFn(toBuild, parameters)
 	}
 	return nil
 }
@@ -118,7 +172,11 @@ func (l *log) compact() error {
 	}
 	iter := l.getIter()
 	for current := iter(); current != nil; current = iter() {
-		err = writeAction(tempFile, l.defaultActionKey, current)
+		marshalledElement, err := l.marshalFn(current)
+		if err != nil {
+			return errors.New("Error marshalling element during compaction: " + err.Error())
+		}
+		err = writeAction(tempFile, l.defaultActionKey, marshalledElement)
 		if err != nil {
 			return err
 		}
@@ -149,6 +207,6 @@ func (l *log) compactIfNecessary() error {
 	return nil
 }
 
-func writeAction(file *os.File, actionKey string, parameters ...json.Marshaler) error {
-	return json.NewEncoder(file).Encode(action{actionKey, parameters})
+func writeAction(file *os.File, actionKey string, marshalledParameters ...[]byte) error {
+	return json.NewEncoder(file).Encode(action{actionKey, marshalledParameters})
 }
