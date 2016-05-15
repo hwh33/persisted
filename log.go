@@ -22,9 +22,9 @@ import (
 //
 // Obtaining the Current State:
 // To re-write the log during compaction, the current state of the data
-// structure is obtained via an iterator returned by calling the getIter
-// function. If the order in which the default action is applied matters, then
-// the iterator must return the elements of the data structure in order.
+// structure is obtained via an iterator (obtained by calling the getIter
+// function). The default action is applied, in order, to each element returned
+// by the iterator.
 //
 // The Default Action:
 // To resolve compaction with the iterator function, the default action must
@@ -47,6 +47,9 @@ import (
 // Initialize the compaction threshold to 10 KB.
 const initialCompactionThreshold = 10 * 1024
 
+// A function which applies the action to the object with the given parameters.
+type actionFunction func(object interface{}, parameters ...interface{})
+
 type log struct {
 	file             *os.File
 	getIter          func() func() interface{}
@@ -56,13 +59,6 @@ type log struct {
 	marshalFn        func(interface{}) ([]byte, error)
 	unmarshalFn      func([]byte, interface{}) error
 }
-
-// A function which applies the action to the object with the given subject and
-// metadata. In 'list.append(newElement)', list is the object and newElement is
-// the subject. The metadata is nil. In 'list.remove(2)', list is the object and
-// 2 is the metadata. The subject is nil.
-type actionFunction func(
-	object interface{}, parameters ...interface{})
 
 // Used for JSON encoding / decoding of actions.
 type action struct {
@@ -74,12 +70,6 @@ type action struct {
 // This will create a new file, but the parent directory must exist. If the file
 // is not empty, it will be interpreted as an existing log.
 func openLog(filepath string, iterFunction func() func() interface{},
-	actions map[string]actionFunction, defaultActionKey string) (*log, error) {
-	return openCustomLog(
-		filepath, iterFunction, actions, defaultActionKey, json.Marshal, json.Unmarshal)
-}
-
-func openCustomLog(filepath string, iterFunction func() func() interface{},
 	actions map[string]actionFunction, defaultActionKey string,
 	marshalFn func(interface{}) ([]byte, error),
 	unmarshalFn func([]byte, interface{}) error) (*log, error) {
@@ -107,7 +97,9 @@ func openCustomLog(filepath string, iterFunction func() func() interface{},
 	if err != nil {
 		return nil, err
 	}
-	openedLog.setCompactionThreshold(fileInfo.Size() * 2)
+	if openedLog.compactThreshold < fileInfo.Size() {
+		openedLog.compactThreshold = fileInfo.Size() * 2
+	}
 	return openedLog, nil
 }
 
@@ -125,11 +117,6 @@ func (l *log) addAction(actionKey string, parameters ...interface{}) error {
 	if err != nil {
 		return err
 	}
-	return l.compactIfNecessary()
-}
-
-func (l *log) setCompactionThreshold(compactionThreshold int64) error {
-	l.compactThreshold = compactionThreshold
 	return l.compactIfNecessary()
 }
 
