@@ -3,6 +3,7 @@ package persisted
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -62,7 +63,7 @@ type marshalledOperation struct {
 // equivalent to its original self.
 func newLog(filepath string, compactedOperationsCallback func() []operation,
 	marshalFn marshalFunc, unmarshalFn unmarshalFunc) (*log, error) {
-	logFile, err := os.Open(filepath)
+	logFile, err := os.OpenFile(filepath, os.O_RDWR, os.ModePerm)
 	if err != nil {
 		return nil, err
 	}
@@ -82,6 +83,10 @@ func (l *log) add(op operation) error {
 	if err != nil {
 		return err
 	}
+	_, err = l.file.Seek(0, 2)
+	if err != nil {
+		return err
+	}
 	err = json.NewEncoder(l.file).Encode(marshalledOp)
 	if err != nil {
 		return err
@@ -96,6 +101,10 @@ func (l *log) add(op operation) error {
 // applied, they have the desired effect on the state of the data structure
 // backed by this log.
 func (l *log) replay(operationsMap map[string]func(...interface{}) error) error {
+	_, err := l.file.Seek(0, 0)
+	if err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(l.file)
 	var marshalledOp marshalledOperation
 	for {
@@ -105,17 +114,17 @@ func (l *log) replay(operationsMap map[string]func(...interface{}) error) error 
 		} else if err != nil {
 			return err
 		}
-		change, err := marshalledOp.unmarshal(l.unmarshaler)
+		op, err := marshalledOp.unmarshal(l.unmarshaler)
 		if err != nil {
-			return err
+			return errors.New("Error unmarshalling operation: " + err.Error())
 		}
-		opFunction, keyExists := operationsMap[change.key]
+		opFunction, keyExists := operationsMap[op.key]
 		if !keyExists {
-			return errors.New("Recorded key <" + change.key + "> not found in input map")
+			return errors.New("Recorded key <" + op.key + "> not found in input map")
 		}
-		err = opFunction(change.parameters)
+		err = opFunction(op.parameters)
 		if err != nil {
-			return errors.New("Error applying state change: " + err.Error())
+			return errors.New("Error applying operation: " + err.Error())
 		}
 	}
 	// Compact now as we'd rather take a performance hit during initialization.
@@ -152,6 +161,7 @@ func (l *log) compactIfNecessary() error {
 		return err
 	}
 	if stat.Size() > l.compactThreshold {
+		fmt.Println("compacting")
 		err := l.compact()
 		if err != nil {
 			return err
@@ -170,7 +180,13 @@ func (l *log) compactIfNecessary() error {
 	return nil
 }
 
+// Convenience function for creating operations.
+func createOp(key string, parameters ...interface{}) operation {
+	return operation{key, parameters}
+}
+
 func (sc *operation) marshal(marshal marshalFunc) (marshalledOp marshalledOperation, err error) {
+	// fmt.Printf("key: %s; param[0]: %s\n", marshalledOp.Key, marshalledOp.MarshalledParameters[0])
 	marshalledParameters := make([][]byte, len(sc.parameters))
 	for index, parameter := range sc.parameters {
 		marshalledParameters[index], err = marshal(parameter)
@@ -185,7 +201,7 @@ func (sc *operation) marshal(marshal marshalFunc) (marshalledOp marshalledOperat
 func (m *marshalledOperation) unmarshal(unmarshal unmarshalFunc) (op operation, err error) {
 	parameters := make([]interface{}, len(m.MarshalledParameters))
 	for index, marshalledParameter := range m.MarshalledParameters {
-		err = unmarshal(marshalledParameter, parameters[index])
+		err = unmarshal(marshalledParameter, &parameters[index])
 		if err != nil {
 			return
 		}
