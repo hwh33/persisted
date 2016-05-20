@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -21,9 +22,8 @@ func TestNewLogAndReplay(t *testing.T) {
 		}
 	}
 
-	// tf, err := newTempFile()
-	tf, err := ioutil.TempFile(".", "temp-testing")
-	// defer os.Remove(tf.Name())
+	tf, err := ioutil.TempFile("", "temp-testing")
+	defer os.Remove(tf.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
