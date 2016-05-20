@@ -187,7 +187,6 @@ func createOp(key string, parameters ...interface{}) operation {
 }
 
 func (sc *operation) marshal(marshal marshalFunc) (marshalledOp marshalledOperation, err error) {
-	// fmt.Printf("key: %s; param[0]: %s\n", marshalledOp.Key, marshalledOp.MarshalledParameters[0])
 	marshalledParameters := make([][]byte, len(sc.parameters))
 	for index, parameter := range sc.parameters {
 		marshalledParameters[index], err = marshal(parameter)
