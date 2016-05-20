@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 )
 
 // The log type defined in this file is used to actively record the state of
@@ -134,9 +135,9 @@ func (l *log) replay(operationsMap map[string]func(...interface{}) error) error 
 // Compact the log. This is equivalent to calling l.add, in order, for every
 // state change returned by l.getCompactedChanges().
 func (l *log) compact() error {
-	tempFile, err := ioutil.TempFile("", "TempCompactionFile-"+l.file.Name())
+	tempFile, err := ioutil.TempFile("", "TemporaryCompactionFile-"+filepath.Base(l.file.Name()))
 	if err != nil {
-		return nil
+		return err
 	}
 	ops := l.getCompactedOperations()
 	encoder := json.NewEncoder(tempFile)

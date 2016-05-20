@@ -47,7 +47,14 @@ func TestNewLogAndReplay(t *testing.T) {
 	// Now try to create a new log off of the same file and replay it into a new
 	// slice. The result should be a copy of our original slice.
 	var newS []int
-	newLog, err := newLog(tf.Name(), getCallback(newS), json.Marshal, json.Unmarshal)
+	callback := func() []operation {
+		ops := make([]operation, len(newS))
+		for index, i := range newS {
+			ops[index] = createOp(appendKey, i)
+		}
+		return ops
+	}
+	newLog, err := newLog(tf.Name(), callback, json.Marshal, json.Unmarshal)
 	if err != nil {
 		t.Fatal(err)
 	}
