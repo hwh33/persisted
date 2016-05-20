@@ -144,7 +144,7 @@ func TestBadInputFile(t *testing.T) {
 	defer os.Remove(tempFile.Name())
 
 	// Write an append with no subject.
-	_, err = tempFile.WriteString(append)
+	_, err = tempFile.WriteString(_append)
 	if err != nil {
 		t.Fatal(err)
 	}

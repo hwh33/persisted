@@ -8,9 +8,9 @@ import (
 
 // Actions we record in the log file.
 const (
-	append = "__append__"
-	push   = "__push__"
-	pop    = "__pop__"
+	_append = "__append__"
+	_push   = "__push__"
+	_pop    = "__pop__"
 )
 
 // We use the noSubject type when we have actions we want to log which do not
@@ -62,15 +62,15 @@ func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error
 			return nil, errors.New("Failed to read input linked list file: unexpected end of file")
 		}
 		decoded, err = decodeFn(scanner.Text())
-		if action != pop && err != nil {
+		if action != _pop && err != nil {
 			return nil, errors.New("Failed to decode encoded stringable in input file: " + err.Error())
 		}
 
-		if action == append {
+		if action == _append {
 			linkedList.inner.append(decoded)
-		} else if action == push {
+		} else if action == _push {
 			linkedList.inner.push(decoded)
-		} else if action == pop {
+		} else if action == _pop {
 			linkedList.inner.pop()
 		} else {
 			return nil, errors.New("Input file appears to be corrupted")
@@ -86,7 +86,7 @@ func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error
 
 	iterator := linkedList.Iterator()
 	for element := iterator(); element != nil; element = iterator() {
-		linkedList.logAction(append, element)
+		linkedList.logAction(_append, element)
 	}
 
 	return linkedList, nil
@@ -95,13 +95,13 @@ func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error
 // Append adds the input element to the end of the list.
 func (ll *LinkedList) Append(newElement Stringable) error {
 	ll.inner.append(newElement)
-	return ll.logAction(append, newElement)
+	return ll.logAction(_append, newElement)
 }
 
 // Push adds the input element to the beginning of the list.
 func (ll *LinkedList) Push(newElement Stringable) error {
 	ll.inner.push(newElement)
-	return ll.logAction(push, newElement)
+	return ll.logAction(_push, newElement)
 }
 
 // Pop removes and returns the last element of the list. Returns nil if the list
@@ -111,7 +111,7 @@ func (ll *LinkedList) Pop() (Stringable, error) {
 	if popped == nil {
 		return nil, nil
 	}
-	return popped, ll.logAction(pop, new(noSubject))
+	return popped, ll.logAction(_pop, new(noSubject))
 }
 
 // Get returns the element at the input position without removing it from the
