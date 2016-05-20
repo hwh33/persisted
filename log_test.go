@@ -11,17 +11,6 @@ import (
 func TestNewLogAndReplay(t *testing.T) {
 	appendKey := "append"
 
-	// We will use this function to generate callbacks for slices of ints.
-	getCallback := func(ints []int) func() []operation {
-		return func() []operation {
-			ops := make([]operation, len(ints))
-			for _, i := range ints {
-				ops = append(ops, createOp(appendKey, i))
-			}
-			return ops
-		}
-	}
-
 	tf, err := ioutil.TempFile("", "temp-testing")
 	defer os.Remove(tf.Name())
 	if err != nil {
@@ -30,7 +19,14 @@ func TestNewLogAndReplay(t *testing.T) {
 
 	// Try making a log for a slice of ints.
 	var s []int
-	l, err := newLog(tf.Name(), getCallback(s), json.Marshal, json.Unmarshal)
+	callback := func() []operation {
+		ops := make([]operation, len(s))
+		for index, i := range s {
+			ops[index] = createOp(appendKey, i)
+		}
+		return ops
+	}
+	l, err := newLog(tf.Name(), callback, json.Marshal, json.Unmarshal)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,14 +43,14 @@ func TestNewLogAndReplay(t *testing.T) {
 	// Now try to create a new log off of the same file and replay it into a new
 	// slice. The result should be a copy of our original slice.
 	var newS []int
-	callback := func() []operation {
+	newCallback := func() []operation {
 		ops := make([]operation, len(newS))
 		for index, i := range newS {
 			ops[index] = createOp(appendKey, i)
 		}
 		return ops
 	}
-	newLog, err := newLog(tf.Name(), callback, json.Marshal, json.Unmarshal)
+	newLog, err := newLog(tf.Name(), newCallback, json.Marshal, json.Unmarshal)
 	if err != nil {
 		t.Fatal(err)
 	}
