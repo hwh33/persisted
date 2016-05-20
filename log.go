@@ -21,47 +21,46 @@ import (
 // Initialize the compaction threshold to 10 KB.
 const initialCompactionThreshold = 10 * 1024
 
-// stateChange represents some operation which changes the state of a persisted
-// data structure.
-type stateChange struct {
+type log struct {
+	file                   *os.File
+	getCompactedOperations func() []operation
+	compactThreshold       int64
+	marshaler              marshalFunc
+	unmarshaler            unmarshalFunc
+}
+
+// Represents some operation which changes the state of a persisted data
+// structure.
+type operation struct {
 	key        string
 	parameters []interface{}
 }
 
-// Used to marshal and unmarshal the parameters in a stateChange.
+// Used to marshal and unmarshal the parameters in an operation.
 type marshalFunc func(interface{}) ([]byte, error)
 type unmarshalFunc func([]byte, interface{}) error
 
-// The log type is used to persist data structures in this package. This is
-// achieved by recording any operations which change the state of the structure.
-type log struct {
-	file                *os.File
-	getCompactedChanges func() []stateChange
-	compactThreshold    int64
-	marshaler           marshalFunc
-	unmarshaler         unmarshalFunc
-}
-
-// Used for JSON encoding / decoding of state changes.
-type marshalledStateChange struct {
+// Used for JSON encoding / decoding of operations.
+type marshalledOperation struct {
 	Key                  string
 	MarshalledParameters [][]byte
 }
 
-// Initializes a log backed by the file at the provided file path. If this file
+// Initializes a log backed by the file at the provided path. If this file
 // already exists, it will be interpreted as an existing log. If the file does
 // not exist, it will be created, but all parent directories must exist.
 //
-// compactedChangesFn should return the most compact series of state changes
-// which represent the data structure recorded in this log. This should be a
-// closure so that it always returns a set of changes reflecting the current
-// state.
+// compactedOperationsCallback should return the most compact series of
+// operations which represent the data structure. This callback function may be
+// called multiple times. These calls are synchronous but no guarantees are made
+// as to which method calls will result in execution of the callback. The
+// returned slice must always represent the current state of the structure.
 //
 // The marshal and unmarshal functions are used for parameters passed in to the
 // add method. These methods must produce valid JSON and a "round-tripped"
 // parameter (one which has been marshalled, then unmarshalled) must be
 // equivalent to its original self.
-func newLog(filepath string, compactedChangesFn func() []stateChange,
+func newLog(filepath string, compactedOperationsCallback func() []operation,
 	marshalFn marshalFunc, unmarshalFn unmarshalFunc) (*log, error) {
 	logFile, err := os.Open(filepath)
 	if err != nil {
@@ -70,7 +69,7 @@ func newLog(filepath string, compactedChangesFn func() []stateChange,
 	// TODO: check file
 	return &log{
 		logFile,
-		compactedChangesFn,
+		compactedOperationsCallback,
 		initialCompactionThreshold,
 		marshalFn,
 		unmarshalFn,
@@ -78,44 +77,43 @@ func newLog(filepath string, compactedChangesFn func() []stateChange,
 }
 
 // Records the state change in the log.
-func (l *log) add(change stateChange) error {
-	marshalledChange, err := change.marshal(l.marshaler)
+func (l *log) add(op operation) error {
+	marshalledOp, err := op.marshal(l.marshaler)
 	if err != nil {
 		return err
 	}
-	err = json.NewEncoder(l.file).Encode(marshalledChange)
+	err = json.NewEncoder(l.file).Encode(marshalledOp)
 	if err != nil {
 		return err
 	}
 	return l.compactIfNecessary()
 }
 
-// Uses the input map to replay every state change in the log. This method will
-// iterate through the changes recorded in the log and unmarshal the associated
-// parameters. The associated function will be looked up in the input map and
-// called with the recorded parameters.
-// The values in the inut map should most likely be closures so that, when
+// Replays every operation in the log. The operation key is used to look up the
+// associated function in the input map. The function is then called with the
+// operation parameters.
+// The functions in the map should most likely be closures so that, when
 // applied, they have the desired effect on the state of the data structure
 // backed by this log.
-func (l *log) replay(stateChangeFunctions map[string]func(...interface{}) error) error {
+func (l *log) replay(operationsMap map[string]func(...interface{}) error) error {
 	decoder := json.NewDecoder(l.file)
-	var marshalledChange marshalledStateChange
+	var marshalledOp marshalledOperation
 	for {
-		err := decoder.Decode(&marshalledChange)
+		err := decoder.Decode(&marshalledOp)
 		if err == io.EOF {
 			break
 		} else if err != nil {
 			return err
 		}
-		change, err := marshalledChange.unmarshal(l.unmarshaler)
+		change, err := marshalledOp.unmarshal(l.unmarshaler)
 		if err != nil {
 			return err
 		}
-		stateChangeFunction, keyExists := stateChangeFunctions[change.key]
+		opFunction, keyExists := operationsMap[change.key]
 		if !keyExists {
 			return errors.New("Recorded key <" + change.key + "> not found in input map")
 		}
-		err = stateChangeFunction(change.parameters)
+		err = opFunction(change.parameters)
 		if err != nil {
 			return errors.New("Error applying state change: " + err.Error())
 		}
@@ -131,14 +129,14 @@ func (l *log) compact() error {
 	if err != nil {
 		return nil
 	}
-	changes := l.getCompactedChanges()
+	ops := l.getCompactedOperations()
 	encoder := json.NewEncoder(tempFile)
-	for _, change := range changes {
-		marshalledChange, err := change.marshal(l.marshaler)
+	for _, op := range ops {
+		marshalledOp, err := op.marshal(l.marshaler)
 		if err != nil {
 			return errors.New("Marshalling error during compaction: " + err.Error())
 		}
-		err = encoder.Encode(marshalledChange)
+		err = encoder.Encode(marshalledOp)
 		if err != nil {
 			return errors.New("Error during compaction: " + err.Error())
 		}
@@ -158,21 +156,21 @@ func (l *log) compactIfNecessary() error {
 		if err != nil {
 			return err
 		}
-	}
-	stat, err = l.file.Stat()
-	if err != nil {
-		return err
-	}
-	// If, after compaction, the log is still over the threshold, then we need to
-	// increase the compaction threshold to avoid thrashing. We simply double the
-	// threshold each time this happens.
-	if stat.Size() > l.compactThreshold {
-		l.compactThreshold = l.compactThreshold * 2
+		stat, err = l.file.Stat()
+		if err != nil {
+			return err
+		}
+		// If, after compaction, the log is still over the threshold, then we need to
+		// increase the compaction threshold to avoid thrashing. We simply double the
+		// threshold each time this happens.
+		if stat.Size() > l.compactThreshold {
+			l.compactThreshold = l.compactThreshold * 2
+		}
 	}
 	return nil
 }
 
-func (sc *stateChange) marshal(marshal marshalFunc) (m marshalledStateChange, err error) {
+func (sc *operation) marshal(marshal marshalFunc) (marshalledOp marshalledOperation, err error) {
 	marshalledParameters := make([][]byte, len(sc.parameters))
 	for index, parameter := range sc.parameters {
 		marshalledParameters[index], err = marshal(parameter)
@@ -180,11 +178,11 @@ func (sc *stateChange) marshal(marshal marshalFunc) (m marshalledStateChange, er
 			return
 		}
 	}
-	m = marshalledStateChange{sc.key, marshalledParameters}
+	marshalledOp = marshalledOperation{sc.key, marshalledParameters}
 	return
 }
 
-func (m *marshalledStateChange) unmarshal(unmarshal unmarshalFunc) (sc stateChange, err error) {
+func (m *marshalledOperation) unmarshal(unmarshal unmarshalFunc) (op operation, err error) {
 	parameters := make([]interface{}, len(m.MarshalledParameters))
 	for index, marshalledParameter := range m.MarshalledParameters {
 		err = unmarshal(marshalledParameter, parameters[index])
@@ -192,6 +190,6 @@ func (m *marshalledStateChange) unmarshal(unmarshal unmarshalFunc) (sc stateChan
 			return
 		}
 	}
-	sc = stateChange{m.Key, parameters}
+	op = operation{m.Key, parameters}
 	return
 }
