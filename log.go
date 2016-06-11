@@ -50,7 +50,7 @@ type marshalledOperation struct {
 
 // Initializes a log backed by the file at the provided path. If this file
 // already exists, it will be interpreted as an existing log. If the file does
-// not exist, it will be created, but all parent directories must exist.
+// not exist it will be created, but all parent directories must exist.
 //
 // compactedOperationsCallback should return the most compact series of
 // operations which represent the data structure. This callback function may be
@@ -78,7 +78,7 @@ func newLog(filepath string, compactedOperationsCallback func() []operation,
 	}, nil
 }
 
-// Records the state change in the log.
+// Records the operation in the log.
 func (l *log) add(op operation) error {
 	marshalledOp, err := op.marshal(l.marshaler)
 	if err != nil {
