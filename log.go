@@ -123,7 +123,7 @@ func (l *log) replay(operationsMap map[string]func(...interface{}) error) error 
 		if !keyExists {
 			return errors.New("Recorded key <" + op.key + "> not found in input map")
 		}
-		err = opFunction(op.parameters)
+		err = opFunction(op.parameters...)
 		if err != nil {
 			return errors.New("Error applying operation: " + err.Error())
 		}
@@ -182,7 +182,7 @@ func (l *log) compactIfNecessary() error {
 }
 
 // Convenience function for creating operations.
-func createOp(key string, parameters ...interface{}) operation {
+func newOperation(key string, parameters ...interface{}) operation {
 	return operation{key, parameters}
 }
 
