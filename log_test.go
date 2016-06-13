@@ -4,13 +4,19 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"math"
 	"os"
+	"os/exec"
 	"testing"
 )
 
-func TestNewLogAndReplay(t *testing.T) {
-	appendKey := "append"
+const (
+	appendKey  = "append"
+	deleteKey  = "delete"
+	replaceKey = "replace"
+)
 
+func TestNewLogAndReplay(t *testing.T) {
 	tf, err := ioutil.TempFile("", "temp-testing")
 	defer os.Remove(tf.Name())
 	if err != nil {
@@ -75,10 +81,6 @@ func TestNewLogAndReplay(t *testing.T) {
 }
 
 func TestAdd(t *testing.T) {
-	appendKey := "append"
-	deleteKey := "delete"
-	replaceKey := "replace"
-
 	var s []int
 	operationsMap := make(map[string]func(...interface{}) error)
 	operationsMap[appendKey] = bind(appendOperation, &s)
@@ -139,6 +141,139 @@ func TestAdd(t *testing.T) {
 }
 
 func TestCompact(t *testing.T) {
+	var s []int
+	jennysNumber := 8675309
+	operationsMap := make(map[string]func(...interface{}) error)
+	operationsMap[appendKey] = bind(appendOperation, &s)
+	operationsMap[replaceKey] = bind(replaceOperation, &s)
+
+	tf, err := ioutil.TempFile(".", "temp-testing")
+	// defer os.Remove(tf.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make a log for s.
+	callback := func() []operation {
+		ops := make([]operation, len(s))
+		for index, i := range s {
+			ops[index] = newOperation(appendKey, i)
+		}
+		return ops
+	}
+	l, err := newLog(tf.Name(), callback, json.Marshal, json.Unmarshal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Initially, the log has one entry.
+	s = append(s, jennysNumber)
+	l.add(newOperation(appendKey, jennysNumber))
+
+	// debugging
+	tf2, err := ioutil.TempFile(".", "debugging")
+	if err != nil {
+		t.Fatal(err)
+	}
+	l2, err := newLog(tf2.Name(), callback, json.Marshal, json.Unmarshal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	l2.compactThreshold = math.MaxInt64
+	l2.add(newOperation(appendKey, jennysNumber))
+	for i := 0; i < 1000; i++ {
+		l2.add(newOperation(replaceKey, 0, jennysNumber))
+	}
+
+	// To test compaction we:
+	// 1. Record 1000 instances of a replace operation which does nothing.
+	// 2. Do this with a 10 GB threshold so that no compaction occurs.
+	// 3. Lower the threshold and make sure that the file size decreases.
+	// 4. Continue to log the replace operations and make sure the file size
+	//    stays under the threshold.
+
+	// Establish a baseline size the log before compaction.
+	l.compactThreshold = math.MaxInt64
+	for i := 0; i < 1000; i++ {
+		s[0] = jennysNumber
+		l.add(newOperation(replaceKey, 0, jennysNumber))
+	}
+	info, err := l.file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	baselineLogSize := info.Size()
+	fmt.Printf("baseline size: %d\n", baselineLogSize)
+
+	// debugging
+	fmt.Println("wc -l log-file")
+	cmd := exec.Command("wc", "-l", tf.Name())
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("%s\n", out)
+
+	// Sanity check to make sure the log is accurate.
+	s = make([]int, 0)
+	err = l.replay(operationsMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s) != 1 || s[0] != jennysNumber {
+		t.Fatal("Log does not accurately reflect state (before compaction)")
+	}
+
+	// Now lower the threshold down to half the current size. We add one more
+	// operation to trigger compaction.
+	l.compactThreshold = baselineLogSize / 2
+	l.add(newOperation(replaceKey, 0, jennysNumber))
+	// Make sure the new log size is correct and that the log is still accurate.
+	l.file.Sync()
+	info, err = l.file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// debugging
+	l2.file.Sync()
+	info2, err := l2.file.Stat()
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Printf("size1: %d, size2: %d\n", info.Size(), info2.Size())
+
+	if info.Size() > l.compactThreshold {
+		fmt.Println(info.Size())
+		fmt.Println("wc -l log-file")
+		cmd = exec.Command("wc", "-l", tf.Name())
+		out, err = cmd.Output()
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("%s\n", out)
+		t.Fatal("Compaction did not decrease file size as expected")
+	}
+	s = make([]int, 0)
+	err = l.replay(operationsMap)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(s) != 1 || s[0] != jennysNumber {
+		t.Fatal("Log does not accurately reflect state after compaction")
+	}
+
+	for i := 0; i < 5000; i++ {
+		s[0] = jennysNumber
+		l.add(newOperation(replaceKey, 0, jennysNumber))
+		info, err = l.file.Stat()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Size() > l.compactThreshold {
+			t.Fatal("Log file over compaction threshold")
+		}
+	}
+
 	// TODO: implement me!
 }
 
