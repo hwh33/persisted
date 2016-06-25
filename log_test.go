@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"math"
 	"os"
-	"os/exec"
 	"testing"
 )
 
@@ -148,7 +147,7 @@ func TestCompact(t *testing.T) {
 	operationsMap[replaceKey] = bind(replaceOperation, &s)
 
 	tf, err := ioutil.TempFile(".", "temp-testing")
-	// defer os.Remove(tf.Name())
+	defer os.Remove(tf.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -169,88 +168,27 @@ func TestCompact(t *testing.T) {
 	s = append(s, jennysNumber)
 	l.add(newOperation(appendKey, jennysNumber))
 
-	// debugging
-	tf2, err := ioutil.TempFile(".", "debugging")
-	if err != nil {
-		t.Fatal(err)
-	}
-	l2, err := newLog(tf2.Name(), callback, json.Marshal, json.Unmarshal)
-	if err != nil {
-		t.Fatal(err)
-	}
-	l2.compactThreshold = math.MaxInt64
-	l2.add(newOperation(appendKey, jennysNumber))
-	for i := 0; i < 1000; i++ {
-		l2.add(newOperation(replaceKey, 0, jennysNumber))
-	}
-
 	// To test compaction we:
 	// 1. Record 1000 instances of a replace operation which does nothing.
-	// 2. Do this with a 10 GB threshold so that no compaction occurs.
-	// 3. Lower the threshold and make sure that the file size decreases.
-	// 4. Continue to log the replace operations and make sure the file size
+	//    Do this with a the max threshold so that no compaction occurs.
+	// 2. Lower the threshold and make sure that the file size decreases.
+	// 3. Continue to log the replace operations and make sure the file size
 	//    stays under the threshold.
 
-	// Establish a baseline size the log before compaction.
+	// Step 1.
 	l.compactThreshold = math.MaxInt64
 	for i := 0; i < 1000; i++ {
 		s[0] = jennysNumber
 		l.add(newOperation(replaceKey, 0, jennysNumber))
 	}
-	info, err := l.file.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	baselineLogSize := info.Size()
-	fmt.Printf("baseline size: %d\n", baselineLogSize)
 
-	// debugging
-	fmt.Println("wc -l log-file")
-	cmd := exec.Command("wc", "-l", tf.Name())
-	out, err := cmd.Output()
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Printf("%s\n", out)
-
-	// Sanity check to make sure the log is accurate.
-	s = make([]int, 0)
-	err = l.replay(operationsMap)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(s) != 1 || s[0] != jennysNumber {
-		t.Fatal("Log does not accurately reflect state (before compaction)")
-	}
-
-	// Now lower the threshold down to half the current size. We add one more
-	// operation to trigger compaction.
-	l.compactThreshold = baselineLogSize / 2
+	// Step 2.
+	// We add one more operation to trigger compaction.
+	newCompactThreshold := size(l.file) / 2
+	l.compactThreshold = newCompactThreshold
 	l.add(newOperation(replaceKey, 0, jennysNumber))
 	// Make sure the new log size is correct and that the log is still accurate.
-	l.file.Sync()
-	info, err = l.file.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	// debugging
-	l2.file.Sync()
-	info2, err := l2.file.Stat()
-	if err != nil {
-		t.Fatal(err)
-	}
-	fmt.Printf("size1: %d, size2: %d\n", info.Size(), info2.Size())
-
-	if info.Size() > l.compactThreshold {
-		fmt.Println(info.Size())
-		fmt.Println("wc -l log-file")
-		cmd = exec.Command("wc", "-l", tf.Name())
-		out, err = cmd.Output()
-		if err != nil {
-			t.Fatal(err)
-		}
-		fmt.Printf("%s\n", out)
+	if size(l.file) > newCompactThreshold {
 		t.Fatal("Compaction did not decrease file size as expected")
 	}
 	s = make([]int, 0)
@@ -262,19 +200,14 @@ func TestCompact(t *testing.T) {
 		t.Fatal("Log does not accurately reflect state after compaction")
 	}
 
+	// Step 3.
 	for i := 0; i < 5000; i++ {
 		s[0] = jennysNumber
 		l.add(newOperation(replaceKey, 0, jennysNumber))
-		info, err = l.file.Stat()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if info.Size() > l.compactThreshold {
+		if size(l.file) > newCompactThreshold {
 			t.Fatal("Log file over compaction threshold")
 		}
 	}
-
-	// TODO: implement me!
 }
 
 func TestCompactIfNecessary(t *testing.T) {
@@ -353,4 +286,13 @@ func slicesEqual(slice1, slice2 []int) bool {
 		}
 	}
 	return true
+}
+
+// Helper function for easier querying of file size.
+func size(f *os.File) int64 {
+	info, err := f.Stat()
+	if err != nil {
+		panic(err)
+	}
+	return info.Size()
 }

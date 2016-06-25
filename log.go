@@ -3,7 +3,6 @@ package persisted
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -151,8 +150,17 @@ func (l *log) compact() error {
 			return errors.New("Error during compaction: " + err.Error())
 		}
 	}
+
 	// If all went well, we can now over-write the existing log.
-	return os.Rename(tempFile.Name(), l.file.Name())
+	err = os.Rename(tempFile.Name(), l.file.Name())
+	if err != nil {
+		return err
+	}
+	l.file, err = os.OpenFile(l.file.Name(), os.O_RDWR, os.ModePerm)
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
 // Compact if size(log) > compaction threshold, otherwise no-op.
@@ -162,7 +170,6 @@ func (l *log) compactIfNecessary() error {
 		return err
 	}
 	if stat.Size() > l.compactThreshold {
-		fmt.Println("compacting")
 		err := l.compact()
 		if err != nil {
 			return err
