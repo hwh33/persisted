@@ -215,7 +215,46 @@ func TestCompactIfNecessary(t *testing.T) {
 }
 
 func TestOperationRoundtrip(t *testing.T) {
-	// TODO: implement me!
+	params := []interface{}{1, 2.3, "string param"}
+	op := operation{"dummy string", params}
+	marshalledOp, err := op.marshal(json.Marshal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	roundtrippedOp, err := marshalledOp.unmarshal(json.Unmarshal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Check equality.
+	if op.key != roundtrippedOp.key {
+		t.Fatalf("Keys not equal. Original: %s Roundtripped: %s", op.key, roundtrippedOp.key)
+	}
+	if len(op.parameters) != len(roundtrippedOp.parameters) {
+		t.Fatalf("Operations do not contain equal numbers of parameters. Original: %d Roundtripped: %d",
+			len(op.parameters), len(roundtrippedOp.parameters))
+	}
+	roundtrippedInt, ok := roundtrippedOp.parameters[0].(float64)
+	if !ok {
+		t.Fatalf("Roundtripped parameter was not of expected type (int). Instead was %T",
+			roundtrippedOp.parameters[0])
+	}
+	if int(roundtrippedInt) != op.parameters[0] {
+		t.Fatalf("Parameter 0 not equal. Original: %d Roundtripped: %d",
+			op.parameters[0], roundtrippedInt)
+	}
+	roundtrippedFloat, ok := roundtrippedOp.parameters[1].(float64)
+	if !ok {
+		t.Fatalf("Roundtripped parameter was not of expected type (int). Instead was %T",
+			roundtrippedOp.parameters[0])
+	}
+	if roundtrippedFloat != op.parameters[1] {
+		t.Fatalf("Parameter 0 not equal. Original: %f Roundtripped: %f",
+			op.parameters[1], roundtrippedFloat)
+	}
+	if roundtrippedOp.parameters[2] != op.parameters[2] {
+		t.Fatalf("Parameter 2 not equal. Original: %s Roundtripped: %s",
+			op.parameters[2], roundtrippedOp.parameters[2])
+	}
 }
 
 // -- Helper functions --

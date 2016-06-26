@@ -193,15 +193,15 @@ func newOperation(key string, parameters ...interface{}) operation {
 	return operation{key, parameters}
 }
 
-func (sc *operation) marshal(marshal marshalFunc) (marshalledOp marshalledOperation, err error) {
-	marshalledParameters := make([][]byte, len(sc.parameters))
-	for index, parameter := range sc.parameters {
+func (o *operation) marshal(marshal marshalFunc) (marshalledOp marshalledOperation, err error) {
+	marshalledParameters := make([][]byte, len(o.parameters))
+	for index, parameter := range o.parameters {
 		marshalledParameters[index], err = marshal(parameter)
 		if err != nil {
 			return
 		}
 	}
-	marshalledOp = marshalledOperation{sc.key, marshalledParameters}
+	marshalledOp = marshalledOperation{o.key, marshalledParameters}
 	return
 }
 
