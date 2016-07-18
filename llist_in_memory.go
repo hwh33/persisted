@@ -3,7 +3,7 @@ package persisted
 type node struct {
 	previous *node
 	next     *node
-	data     *Stringable
+	data     *interface{}
 }
 
 // The in-memory linked list which backs the persisted version.
@@ -13,7 +13,7 @@ type inMemLinkedList struct {
 	length int
 }
 
-func (ll *inMemLinkedList) append(newElement Stringable) {
+func (ll *inMemLinkedList) append(newElement interface{}) {
 	newNode := new(node)
 	newNode.data = &newElement
 	if ll.tail == nil {
@@ -29,7 +29,7 @@ func (ll *inMemLinkedList) append(newElement Stringable) {
 	}
 }
 
-func (ll *inMemLinkedList) push(newElement Stringable) {
+func (ll *inMemLinkedList) push(newElement interface{}) {
 	newNode := new(node)
 	newNode.data = &newElement
 	if ll.head == nil {
@@ -45,7 +45,7 @@ func (ll *inMemLinkedList) push(newElement Stringable) {
 	}
 }
 
-func (ll *inMemLinkedList) pop() Stringable {
+func (ll *inMemLinkedList) pop() interface{} {
 	if ll.length == 0 {
 		return nil
 	}
@@ -60,7 +60,7 @@ func (ll *inMemLinkedList) pop() Stringable {
 	return *dataToReturn
 }
 
-func (ll *inMemLinkedList) get(position int) Stringable {
+func (ll *inMemLinkedList) get(position int) interface{} {
 	if position < 0 || ll.length-1 < position {
 		// Out of bounds.
 		return nil
@@ -72,10 +72,10 @@ func (ll *inMemLinkedList) get(position int) Stringable {
 	return *currNode.data
 }
 
-func (ll *inMemLinkedList) iterator() func() Stringable {
+func (ll *inMemLinkedList) iterator() func() interface{} {
 	currNode := ll.head
 
-	return func() Stringable {
+	return func() interface{} {
 		if currNode == nil {
 			return nil
 		}

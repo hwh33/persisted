@@ -78,6 +78,7 @@ func newLog(filepath string, compactedOperationsCallback func() []operation,
 }
 
 // Records the operation in the log.
+// TODO: change signature to add(key string, parameters ...interface{}) error
 func (l *log) add(op operation) error {
 	marshalledOp, err := op.marshal(l.marshaler)
 	if err != nil {

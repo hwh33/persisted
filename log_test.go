@@ -173,7 +173,8 @@ func TestCompact(t *testing.T) {
 	//    Do this with a the max threshold so that no compaction occurs.
 	// 2. Lower the threshold and make sure that the file size decreases.
 	// 3. Continue to log the replace operations and make sure the file size
-	//    stays under the threshold.
+	//    stays under the threshold. This verifies that compactIfNecessary is
+	//    running as designed.
 
 	// Step 1.
 	l.compactThreshold = math.MaxInt64
@@ -208,10 +209,6 @@ func TestCompact(t *testing.T) {
 			t.Fatal("Log file over compaction threshold")
 		}
 	}
-}
-
-func TestCompactIfNecessary(t *testing.T) {
-	// TODO: implement me!
 }
 
 func TestOperationRoundtrip(t *testing.T) {

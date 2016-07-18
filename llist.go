@@ -1,25 +1,16 @@
 package persisted
 
 import (
-	"bufio"
-	"errors"
-	"os"
+	"encoding/json"
+	"fmt"
 )
 
-// Actions we record in the log file.
+// Operations we record in the log file.
 const (
 	_append = "__append__"
 	_push   = "__push__"
 	_pop    = "__pop__"
 )
-
-// We use the noSubject type when we have actions we want to log which do not
-// have subjects (such as Pop).
-type noSubject struct{}
-
-func (ns *noSubject) ToString() string {
-	return "__no_subject__"
-}
 
 // TODO: either handle newlines / carriage returns or disallow them
 
@@ -28,7 +19,7 @@ func (ns *noSubject) ToString() string {
 // LinkedList by calling NewLinkedList.
 type LinkedList struct {
 	inner *inMemLinkedList
-	log   *os.File
+	log   *log
 }
 
 // NewLinkedList returns a new LinkedList anchored to the file specified by
@@ -43,80 +34,46 @@ type LinkedList struct {
 // The input DecodeFunction tells the LinkedList how to read the Stringable
 // types back from their marshalled form. It should be able to handle any
 // Stringables already encoded in the input file.
-func NewLinkedList(filepath string, decodeFn DecodeFunction) (*LinkedList, error) {
-	linkedList := new(LinkedList)
-
-	// Rebuild the in-memory list from the input log.
-	inputLog, err := os.Open(filepath)
+func NewLinkedList(filepath string) (linkedList *LinkedList, err error) {
+	// Initialize the log with the input file path.
+	linkedList.log, err = newLog(filepath, linkedList.getCallback(), json.Marshal, json.Unmarshal)
 	if err != nil {
 		return nil, err
 	}
-
+	// Initialize the inner linked list and populate it using the log.
 	linkedList.inner = new(inMemLinkedList)
-	scanner := bufio.NewScanner(inputLog)
-	var decoded Stringable
-	for scanner.Scan() {
-		action := scanner.Text()
-		foundStringable := scanner.Scan()
-		if !foundStringable {
-			return nil, errors.New("Failed to read input linked list file: unexpected end of file")
-		}
-		decoded, err = decodeFn(scanner.Text())
-		if action != _pop && err != nil {
-			return nil, errors.New("Failed to decode encoded stringable in input file: " + err.Error())
-		}
-
-		if action == _append {
-			linkedList.inner.append(decoded)
-		} else if action == _push {
-			linkedList.inner.push(decoded)
-		} else if action == _pop {
-			linkedList.inner.pop()
-		} else {
-			return nil, errors.New("Input file appears to be corrupted")
-		}
-	}
-
-	// Now wipe the log and re-write only the current state of the list.
-	// TODO: it would be safer to write this to a temporary file first
-	linkedList.log, err = os.Create(filepath)
+	err = linkedList.log.replay(linkedList.getOperationsMap())
 	if err != nil {
 		return nil, err
 	}
-
-	iterator := linkedList.Iterator()
-	for element := iterator(); element != nil; element = iterator() {
-		linkedList.logAction(_append, element)
-	}
-
 	return linkedList, nil
 }
 
 // Append adds the input element to the end of the list.
-func (ll *LinkedList) Append(newElement Stringable) error {
+func (ll *LinkedList) Append(newElement interface{}) error {
 	ll.inner.append(newElement)
-	return ll.logAction(_append, newElement)
+	return ll.log.add(newOperation(_append, newElement))
 }
 
 // Push adds the input element to the beginning of the list.
-func (ll *LinkedList) Push(newElement Stringable) error {
+func (ll *LinkedList) Push(newElement interface{}) error {
 	ll.inner.push(newElement)
-	return ll.logAction(_push, newElement)
+	return ll.log.add(newOperation(_push, newElement))
 }
 
 // Pop removes and returns the last element of the list. Returns nil if the list
 // is empty.
-func (ll *LinkedList) Pop() (Stringable, error) {
+func (ll *LinkedList) Pop() (interface{}, error) {
 	popped := ll.inner.pop()
 	if popped == nil {
 		return nil, nil
 	}
-	return popped, ll.logAction(_pop, new(noSubject))
+	return popped, ll.log.add(newOperation(_pop))
 }
 
 // Get returns the element at the input position without removing it from the
 // list. Returns nil if there is no element at the given position.
-func (ll *LinkedList) Get(position int) Stringable {
+func (ll *LinkedList) Get(position int) interface{} {
 	return ll.inner.get(position)
 }
 
@@ -129,12 +86,46 @@ func (ll *LinkedList) Length() int {
 // the list. The iterator function begins at the first element and returns nil
 // when it has run out of elements. Uses the underlying structure, so behavior
 // is undefined if the list is modified between calls to the iterator function.
-func (ll *LinkedList) Iterator() func() Stringable {
+func (ll *LinkedList) Iterator() func() interface{} {
 	return ll.inner.iterator()
 }
 
-func (ll *LinkedList) logAction(action string, subject Stringable) error {
-	ll.log.Seek(0, os.SEEK_END)
-	_, err := ll.log.WriteString(action + "\n" + subject.ToString() + "\n")
-	return err
+// Returns a callback function for the linked list which can be passed into the
+// newLog function.
+func (ll *LinkedList) getCallback() func() []operation {
+	return func() []operation {
+		ops := make([]operation, ll.Length())
+		iter := ll.Iterator()
+		for i := 0; i < ll.Length(); i++ {
+			// TODO: make sure there's a solid unit test for Iterator()
+			ops[i] = newOperation(_append, iter())
+		}
+		return ops
+	}
+}
+
+func (ll *LinkedList) getOperationsMap() map[string]func(...interface{}) error {
+	opsMap := make(map[string]func(...interface{}) error)
+	opsMap[_append] = func(inputs ...interface{}) error {
+		if len(inputs) != 1 {
+			return fmt.Errorf("Expected 1 parameter. Received %d.", len(inputs))
+		}
+		ll.inner.append(inputs[0])
+		return nil
+	}
+	opsMap[_pop] = func(inputs ...interface{}) error {
+		if len(inputs) != 0 {
+			return fmt.Errorf("Expected 0 parameter. Received %d.", len(inputs))
+		}
+		ll.inner.pop()
+		return nil
+	}
+	opsMap[_append] = func(inputs ...interface{}) error {
+		if len(inputs) != 1 {
+			return fmt.Errorf("Expected 1 parameter. Received %d.", len(inputs))
+		}
+		ll.inner.push(inputs[0])
+		return nil
+	}
+	return opsMap
 }
