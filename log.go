@@ -3,6 +3,7 @@ package persisted
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
@@ -121,8 +122,10 @@ func (l *log) replay(operationsMap map[string]func(...interface{}) error) error 
 		}
 		opFunction, keyExists := operationsMap[op.key]
 		if !keyExists {
-			return errors.New("Recorded key <" + op.key + "> not found in input map")
+			return errors.New("Key <" + op.key + "> found in log file but not operations map")
 		}
+		fmt.Println("op:")
+		fmt.Println(op)
 		err = opFunction(op.parameters...)
 		if err != nil {
 			return errors.New("Error applying operation: " + err.Error())

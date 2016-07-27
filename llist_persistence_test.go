@@ -1,6 +1,7 @@
 package persisted
 
 import (
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -21,7 +22,8 @@ func TestPersistence(t *testing.T) {
 
 	// Append 10 elements to the list. Their values reflect their position.
 	for i := 0; i < 10; i++ {
-		err = ll.Append(newInteger(i))
+		// err = ll.Append(integer{i})
+		err = ll.Append(i)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -29,11 +31,13 @@ func TestPersistence(t *testing.T) {
 	// We'll do a few pushes and pops as well.
 	for i := 10; i < 20; i += 2 {
 		// 2 pushes + 1 pop each loop.
-		err = ll.Push(newInteger(i))
+		// err = ll.Push(integer{i})
+		err = ll.Push(i)
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ll.Push(newInteger(i + 1))
+		// err = ll.Push(integer{i + 1})
+		err = ll.Push(i + 1)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -44,7 +48,7 @@ func TestPersistence(t *testing.T) {
 	}
 
 	// Now create a new LinkedList from the existing one's file and compare.
-	llJr, err := NewLinkedList(ll.log.Name(), decodeInt)
+	llJr, err := NewLinkedList(ll.log.file.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -61,7 +65,7 @@ func TestPersistence(t *testing.T) {
 
 	// Create another LinkedList off the new one and compare again to make sure
 	// there were no errors in re-writing the log.
-	llTheThird, err := NewLinkedList(llJr.log.Name(), decodeInt)
+	llTheThird, err := NewLinkedList(llJr.log.file.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +85,7 @@ func TestPersistence(t *testing.T) {
 func TestNonCreatableFile(t *testing.T) {
 	t.Parallel()
 
-	_, err := NewLinkedList("non-existing-directory/temp", decodeInt)
+	_, err := NewLinkedList("non-existing-directory/temp")
 	if err == nil {
 		t.Error("Constructor should have reported error for non-instantiable file")
 	}
@@ -101,12 +105,19 @@ func TestNonReadableFile(t *testing.T) {
 
 	// We need to write some data to the file so that the constructor tries to
 	// read it.
-	tempFile.WriteString(newInteger(1).ToString())
+	// bytes, err := json.Marshal(integer{1})
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
+	// _, err = tempFile.Write(bytes)
+	// if err != nil {
+	// 	t.Fatal(err)
+	// }
 
 	// Set no permissions whatsoever for this file.
 	os.Chmod(tempFile.Name(), 000)
 
-	_, err = NewLinkedList(tempFile.Name(), decodeInt)
+	_, err = NewLinkedList(tempFile.Name())
 	if err == nil {
 		t.Error("Constructor should have reported error for non-readable file")
 	}
@@ -121,11 +132,11 @@ func TestNonWritableFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer wipeTempFiles()
-	ll.Append(newInteger(1))
+	ll.Append(integer{1})
 
 	// Now make the log file read-only and try to re-create a LinkedList from it.
-	os.Chmod(ll.log.Name(), 0444)
-	_, err = NewLinkedList(ll.log.Name(), decodeInt)
+	os.Chmod(ll.log.file.Name(), 0444)
+	_, err = NewLinkedList(ll.log.file.Name())
 	if err == nil {
 		t.Error("Constructor should have reported error for non-writable file")
 	}
@@ -143,41 +154,11 @@ func TestBadInputFile(t *testing.T) {
 	defer tempFile.Close()
 	defer os.Remove(tempFile.Name())
 
-	// Write an append with no subject.
-	_, err = tempFile.WriteString(_append)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, err = NewLinkedList(tempFile.Name(), decodeInt)
-	if err == nil {
-		t.Error("Constructor should have reported error for badly-formatted file")
-	}
-
-	// Now add a subject that the decode function can't parse and try again.
 	_, err = tempFile.WriteString("\nbogus string")
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = NewLinkedList(tempFile.Name(), decodeInt)
-	if err == nil {
-		t.Error("Constructor should have reported error for badly-formatted file")
-	}
-
-	// Now give the constructor a decodable subject, but a badly formatted action.
-	err = tempFile.Truncate(0)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = tempFile.WriteString("bad action\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = tempFile.WriteString(newInteger(1).ToString() + "\n")
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = NewLinkedList(tempFile.Name(), decodeInt)
+	_, err = NewLinkedList(tempFile.Name())
 	if err == nil {
 		t.Error("Constructor should have reported error for badly-formatted file")
 	}
@@ -189,7 +170,10 @@ func TestBadInputFile(t *testing.T) {
 func getIntegerSlice(llist *LinkedList) []int {
 	ints := make([]int, llist.Length())
 	for currentIndex := 0; currentIndex < llist.Length(); currentIndex++ {
-		ints[currentIndex] = llist.Get(currentIndex).(*integer).wrappedInt
+		// ints[currentIndex] = llist.Get(currentIndex).(integer).WrappedInt
+		fmt.Println("llist.Get:")
+		fmt.Println(llist.Get(currentIndex))
+		ints[currentIndex] = llist.Get(currentIndex).(int)
 	}
 	return ints
 }

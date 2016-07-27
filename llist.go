@@ -5,6 +5,10 @@ import (
 	"fmt"
 )
 
+// TODO: fix JSON encoding / decoding issues:
+// 		- ints come back as float64s
+//		- interfaces come back as maps
+
 // Operations we record in the log file.
 const (
 	_append = "__append__"
@@ -36,6 +40,7 @@ type LinkedList struct {
 // Stringables already encoded in the input file.
 func NewLinkedList(filepath string) (linkedList *LinkedList, err error) {
 	// Initialize the log with the input file path.
+	linkedList = new(LinkedList)
 	linkedList.log, err = newLog(filepath, linkedList.getCallback(), json.Marshal, json.Unmarshal)
 	if err != nil {
 		return nil, err
@@ -110,6 +115,8 @@ func (ll *LinkedList) getOperationsMap() map[string]func(...interface{}) error {
 		if len(inputs) != 1 {
 			return fmt.Errorf("Expected 1 parameter. Received %d.", len(inputs))
 		}
+		fmt.Println("appending during replay:")
+		fmt.Println(inputs[0])
 		ll.inner.append(inputs[0])
 		return nil
 	}
@@ -120,7 +127,7 @@ func (ll *LinkedList) getOperationsMap() map[string]func(...interface{}) error {
 		ll.inner.pop()
 		return nil
 	}
-	opsMap[_append] = func(inputs ...interface{}) error {
+	opsMap[_push] = func(inputs ...interface{}) error {
 		if len(inputs) != 1 {
 			return fmt.Errorf("Expected 1 parameter. Received %d.", len(inputs))
 		}

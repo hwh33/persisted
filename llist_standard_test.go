@@ -12,32 +12,7 @@ import (
 
 // This struct is just an integer which implements the Stringable interface.
 type integer struct {
-	wrappedInt int
-}
-
-func newInteger(i int) *integer {
-	newInteger := new(integer)
-	newInteger.wrappedInt = i
-	return newInteger
-}
-
-func (i *integer) ToString() string {
-	return strconv.Itoa(i.wrappedInt)
-}
-
-func (i *integer) FromString(s string) error {
-	encodedInt, err := strconv.Atoi(s)
-	i.wrappedInt = encodedInt
-	return err
-}
-
-// DecodeFunction for the integer type.
-func decodeInt(stringForm string) (Stringable, error) {
-	i, err := strconv.Atoi(stringForm)
-	if err != nil {
-		return nil, err
-	}
-	return newInteger(i), nil
+	WrappedInt int
 }
 
 func TestAppendAndGet(t *testing.T) {
@@ -52,7 +27,7 @@ func TestAppendAndGet(t *testing.T) {
 	// Insert 10 elements with data equal to their position, then check the list's
 	// length and the value of each element.
 	for i := 0; i < 10; i++ {
-		err := ll.Append(newInteger(i))
+		err := ll.Append(integer{i})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -61,9 +36,9 @@ func TestAppendAndGet(t *testing.T) {
 		t.Error("Inserted 10 elements, length was not 10")
 	}
 	for i := 0; i < 10; i++ {
-		element := ll.Get(i).(*integer)
-		if element.wrappedInt != i {
-			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.wrappedInt))
+		element := ll.Get(i).(integer)
+		if element.WrappedInt != i {
+			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.WrappedInt))
 		}
 	}
 	if ll.Length() != 10 {
@@ -87,7 +62,7 @@ func TestPushAndPop(t *testing.T) {
 	// Push 10 elements. The data stored in each element reflects the order in
 	// which it was pushed. This should result in a list from 9 to 0.
 	for i := 0; i < 10; i++ {
-		err = ll.Push(newInteger(i))
+		err = ll.Push(integer{i})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -96,17 +71,17 @@ func TestPushAndPop(t *testing.T) {
 		t.Error("Inserted 10 elements, length was not 10")
 	}
 
-	var element Stringable
+	var element interface{}
 	numberElements := ll.Length()
 	for i := 0; i < numberElements; i++ {
 		element, err = ll.Pop()
 		if err != nil {
 			t.Fatal(err)
 		}
-		elementAsInteger := element.(*integer)
-		if elementAsInteger.wrappedInt != i {
+		elementAsInteger := element.(integer)
+		if elementAsInteger.WrappedInt != i {
 			t.Error("Expected: " + strconv.Itoa(i) + ", got: " +
-				strconv.Itoa(elementAsInteger.wrappedInt))
+				strconv.Itoa(elementAsInteger.WrappedInt))
 		}
 	}
 	if ll.Length() != 0 {
@@ -134,7 +109,7 @@ func TestIterator(t *testing.T) {
 	// Create a list with 10 elements, then create an iterator and test that the
 	// iterator returns the elements expected.
 	for i := 0; i < 10; i++ {
-		err := ll.Append(newInteger(i))
+		err := ll.Append(integer{i})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,9 +120,9 @@ func TestIterator(t *testing.T) {
 	}
 	iter := ll.Iterator()
 	for i := 0; i < 10; i++ {
-		element := iter().(*integer)
-		if element.wrappedInt != i {
-			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.wrappedInt))
+		element := iter().(integer)
+		if element.WrappedInt != i {
+			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.WrappedInt))
 		}
 	}
 	// Confirm that the iterator returns nil when it has exhausted the list.
@@ -156,9 +131,9 @@ func TestIterator(t *testing.T) {
 	}
 	// Confirm that the list is untouched.
 	for i := 0; i < 10; i++ {
-		element := ll.Get(i).(*integer)
-		if element.wrappedInt != i {
-			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.wrappedInt))
+		element := ll.Get(i).(integer)
+		if element.WrappedInt != i {
+			t.Error("Expected: " + strconv.Itoa(i) + ", got: " + strconv.Itoa(element.WrappedInt))
 		}
 	}
 	if ll.Length() != 10 {
@@ -185,6 +160,6 @@ func createTemporaryLinkedList() (linkedList *LinkedList, wipeTempFiles func() e
 		return nil
 	}
 
-	linkedList, err = NewLinkedList(tempFile.Name(), decodeInt)
+	linkedList, err = NewLinkedList(tempFile.Name())
 	return
 }
